@@ -1,8 +1,5 @@
 # OpenShift Container Platform 4.21 Agent-based Installer 閉域インストール手順書
 
-版: `0821v4`  
-更新日: 2026-08-21
-
 本手順書では、Agent-based Installerを使用して、完全閉域環境へOpenShiftを導入する手順を示す。  
 主な手順は以下の通りである。まず、外部インターネット接続環境でOpenShiftの導入に必要なプログラムとイメージを取得し、閉域内のミラーレジストリーへ格納する。その後、クラスター設定を組み込んだAgent ISOを閉域内で作成し、OpenShiftのクラスタに参加するノードをこのISOから起動する。最後に、OpenShiftのインストール完了を確認する。
 
@@ -27,14 +24,12 @@
 
 
 
-<a id="part-1"></a>
 # 第I部　OpenShiftのインストール方式、構成、要件
 
 第I部では、実際のインストール手順を紹介する前に、Agent-based Installerの動作、OpenShiftのクラスター構成、ネットワーク、DNS、NTP、通信、ミラーレジストリーなどの要件を整理する。
 
 
 
-<a id="section-1"></a>
 ## 1. Agent-based Installer方式と作業の流れ
 
 本章では、OpenShiftの主なインストール方式を比較し、Agent-based Installerで閉域クラスターを構築する際の手順の全体像を確認する。
@@ -51,7 +46,7 @@
 | IPI（Installer-provisioned infrastructure） | Installerで、対応基盤のサーバー、ネットワーク、ロードバランサー、bootstrapノードなどを作成・設定し、OpenShiftの導入まで進める。DNSなど一部の設定も、対応する基盤ではInstallerが自動で行う。基盤構築を含めて自動化できるため、手順がシンプル | 対応するクラウドやオンプレミス基盤で、基盤構築を含めて自動化し、導入作業を簡素化したい場合              |
 | UPI（User-provisioned infrastructure）      | InstallerでOpenShiftの設定を作成し、サーバー、ネットワーク、ロードバランサー、DNS、bootstrapノードなどの基盤は利用者側で準備する。IPIより作業量は増えるが、基盤構成のカスタマイズ性が高い                             | 対応するクラウドやオンプレミス基盤で、既存基盤を利用する場合や、組織の要件に合わせて基盤を個別に設計・管理したい場合 |
 | Assisted Installer                        | Red Hatが提供するHosted ServiceをWeb画面から利用し、Discovery ISOを作成して各ノードを起動する。専用の一時bootstrapノードは不要で、対話形式で導入を進められるため手順をシンプルにしやすい                       | インターネットへ接続できるオンプレミス環境で、Web画面を使って対話形式で簡単に導入したい場合。SNOにも対応する  |
-| Agent-based Installer                     | Installerと設定YAMLを使用してCLIでAgent ISOを作成し、そのISOから各ノードを起動する。専用の一時bootstrapノードは不要で、設定をファイルで管理しながら完全閉域環境でも導入できる                                 | オンプレミスの閉域環境で、SNOを含むクラスター設定をYAMLで管理して導入したい場合                |
+| Agent-based Installer                     | Installerと設定YAMLを使用してCLIでAgent ISOを作成し、そのISOから各ノードを起動する。専用の一時bootstrapノードは不要で、設定をファイルで管理しながら完全閉域環境でも導入できる                                 | インターネットへ接続できないオンプレミスの閉域環境で、OpenShiftを導入したい場合。SNOにも対応する     |
 
 
 本手順書では、オンプレ閉域内のInstallerやOpenShiftクラスターが外部への接続を行わない環境を想定し、Agent-based Installerによるインストールの手順を示す。
@@ -147,7 +142,8 @@ flowchart LR
 
 
 
-<a id="section-2"></a>
+
+
 ## 2. クラスター構成と事前要件
 
 本章では、インストール前に確定するクラスター構成、OpenShiftノード、ネットワーク、通信、DNS、NTP、ミラーレジストリーの要件を示す。
@@ -247,8 +243,8 @@ OpenShiftでは、ノード自身を接続するネットワークに加え、Po
 **表2-4　外部インターネット接続ホストで必要な通信**
 
 
-| 通信元            | 通信先                                    | ポート／プロトコル | 用途                                                    |
-| -------------- | -------------------------------------- | --------- | ----------------------------------------------------- |
+| 通信元            | 通信先                   | ポート／プロトコル | 用途                                       |
+| -------------- | --------------------- | --------- | ---------------------------------------- |
 | 外部インターネット接続ホスト | Red Hat配布サイト、公開レジストリー | TCP 443   | OpenShift CLI、OCPリリース、Operator、追加イメージの取得 |
 
 
@@ -364,7 +360,6 @@ OpenShiftへログ、バックアップ、仮想化、ストレージなどの�
 
 
 
-<a id="part-2"></a>
 # 第II部　Agent-based Installerを使用したオフラインインストール手順
 
 第II部では、第I部で整理したサンプル値を用いて、OpenShiftのインストール作業を行う。
@@ -375,7 +370,6 @@ OpenShiftへログ、バックアップ、仮想化、ストレージなどの�
 
 
 
-<a id="section-3"></a>
 ## 3. 外部インターネット接続ホストでの資材準備
 
 本章では、閉域へ持ち込むプログラム、認証情報、OCPリリース、Operator、追加イメージを外部インターネット接続ホスト上で準備する。  
@@ -798,7 +792,6 @@ ls -lh "$MIRROR_WORK_DIR"/mirror_*.tar
 
 
 
-<a id="section-4"></a>
 ## 4. 各資材の閉域への搬入
 
 本章では、外部インターネット接続ホストで準備した`$HOME/ocp-airgap`全体を、ディレクトリー構造を保ったまま閉域内作業ホストへ搬入する。
@@ -843,14 +836,12 @@ ls -lh \
 find "$PKG_DIR" -maxdepth 1 -type f -name 'mirror-registry*.tar.gz' -print
 ```
 
-
 **本章の参照資料**
 
 - [非接続環境：第6章「oc-mirror プラグイン v2 を使用した非接続インストールのイメージのミラーリング」（6.5.5「完全な非接続環境でのイメージセットのミラーリング」）](https://docs.redhat.com/ja/documentation/openshift_container_platform/4.21/observability/disconnected_environments/about-installing-oc-mirror-v2)
 
 
 
-<a id="section-5"></a>
 ## 5. 閉域内作業ホストとミラーレジストリーの準備
 
 本章では、閉域内作業ホストへ搬入したプログラムを配置し、DNS、NTP、ミラーレジストリーへの接続を確認する。既存のミラーレジストリーを利用する場合は、CAと認証情報を準備してミラーレジストリーにイメージを登録する。
@@ -881,6 +872,8 @@ source "$HOME/ocp-airgap/env.sh"
 > [!TIP]
 > **オプション**
 > 長時間処理の画面を保持する場合は`tmux`を用意する。
+
+
 
 #### 5.1.1 搬入済みプログラムを配置して確認する
 
@@ -930,6 +923,7 @@ openshift-install 4.21.21
 Client Version: ...
 ...
 ```
+
 
 
 ### 5.2 DNS、NTP、ミラーレジストリーへの接続を確認する
@@ -1158,7 +1152,6 @@ stat -c '%a %n' "$CLUSTER_PULL_SECRET"
 
 
 
-<a id="section-6"></a>
 ## 6. `install-config.yaml`の作成
 
 本章では、`openshift-install agent create image`がAgent ISOを作成するときに読み込む、クラスター全体の設定ファイル`install-config.yaml`を作成する。  
@@ -1414,7 +1407,6 @@ sshKey: |-
 
 
 
-<a id="section-7"></a>
 ## 7. `agent-config.yaml`の作成
 
 本章では、Agent ISOから起動する各OpenShiftノードのFQDN、役割、NIC、MACアドレス、固定IP、DNS、NTP、デフォルトルート、RHCOSのインストール先ディスクを`agent-config.yaml`へ設定する。
@@ -1729,7 +1721,6 @@ hosts:
 
 
 
-<a id="section-8"></a>
 ## 8. Agent ISOの作成
 
 本章では、作成した`install-config.yaml`と`agent-config.yaml`をISO作成専用のディレクトリーへコピーし、`openshift-install`を使用してAgent ISOを作成する。
@@ -1819,7 +1810,6 @@ isohybrid --uefi "$ASSET_DIR/agent.x86_64.iso"
 
 
 
-<a id="section-9"></a>
 ## 9. ノードの起動とインストールの確認
 
 本章では、作成したAgent ISOで各OpenShiftノードを起動し、OpenShiftのインストール完了を確認する。最後に、各ノードの状態と管理画面への接続を確認する。
@@ -1983,7 +1973,6 @@ https://console-openshift-console.apps.ocp.lab.example.com
 
 
 
-<a id="references"></a>
 ## 参考資料
 
 - [インストールの概要：第1章「OpenShift Container Platform インストールの概要」（1.1「OpenShift Container Platform のインストール」、1.1.4「インストールプロセス」）／第2章「クラスターインストール方法の選択およびそのユーザー向けの準備」（2.1）](https://docs.redhat.com/ja/documentation/openshift_container_platform/4.21/html-single/installation_overview/index)
