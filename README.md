@@ -2,6 +2,12 @@
 
 OpenShift Container Platform 4.21 を Agent-based Installer で閉域導入するための手順書と、検証用 AWS テンプレートをまとめたリポジトリーです。
 
+## 事前準備
+
+- `ocp-airgap-aws-test-cloudformation.yaml` は EC2 キーペアを自動作成しません。
+- スタック作成前に、デプロイ先リージョンで EC2 キーペアを事前に作成してください。
+- `LabKeyName` の既定値は `ocp-airgap-lab` です。パラメーターを変更しない場合は、この名前でキーペアを用意します。
+
 ## 収録ファイル
 
 ### `openshift_agentbasedinstall_airgap.md`
