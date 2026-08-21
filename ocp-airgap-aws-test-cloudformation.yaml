@@ -1,0 +1,740 @@
+# TemplateVersion: 0821v4
+# Updated: 2026-08-21
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates an AWS test environment for the OpenShift 4.21 disconnected workflow
+  through Agent ISO generation. Download uses a public subnet and a
+  stack-managed Elastic IP for mirror-to-disk and SSH. Work and the SNO dummy
+  use private IPv4 addresses and a VPC-local route only, with no public address,
+  NAT route, or Internet Gateway default route. Work later hosts disk-to-mirror,
+  the mirror registry, DNS, NTP, configuration, and ISO generation. The SNO
+  dummy supplies fixed-IP, MAC-address, and connectivity values; the workflow
+  ends before ISO attachment or boot. Lambda-backed custom resources run
+  automatically to resolve stable RHEL 9 AMI metadata and the SNO primary-interface MAC address.
+  They require no manual Lambda action and do not edit local env or OpenShift
+  YAML files.
+
+Parameters:
+  AdminCidr:
+    Type: String
+    Description: >
+      Public IPv4 CIDR allowed to SSH to the download EC2 instance.
+      Specify the administrator workstation or organization egress address as
+      a /32 whenever possible. Enter this value for each stack deployment.
+    AllowedPattern: '^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$'
+    ConstraintDescription: Enter an IPv4 CIDR such as 203.0.113.10/32.
+
+  LabKeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: ocp-airgap-lab
+    Description: >
+      Existing EC2 key pair in the deployment Region. Retain the corresponding
+      private .pem file before creating this stack. Create and store the private
+      key on the administrator workstation through the EC2 console.
+
+  VpcCidr:
+    Type: String
+    Default: 192.168.0.0/16
+    Description: VPC CIDR containing both test subnets.
+
+  PublicSubnetCidr:
+    Type: String
+    Default: 192.168.10.0/24
+    Description: Public subnet for the Internet-connected download host.
+
+  IsolatedSubnetCidr:
+    Type: String
+    Default: 192.168.100.0/24
+    Description: >
+      Isolated subnet matching the guide's example machine network. Its route
+      table contains the automatic VPC-local route as its sole IPv4 route.
+
+  DownloadPrivateIp:
+    Type: String
+    Default: 192.168.10.10
+
+  WorkPrivateIp:
+    Type: String
+    Default: 192.168.100.10
+    Description: >
+      Primary IPv4 of the isolated work host. DNS, NTP, and the mirror registry
+      share this single primary address.
+
+  SnoPrivateIp:
+    Type: String
+    Default: 192.168.100.20
+
+  AmazonProvidedDnsIp:
+    Type: String
+    Default: 192.168.0.2
+    Description: >
+      AWS-only upstream resolver for the test VPC. Keep this aligned with the
+      primary VPC CIDR (the Amazon-provided resolver is the VPC base plus two).
+
+  AmazonTimeSyncIp:
+    Type: String
+    Default: 169.254.169.123
+    Description: AWS-only link-local NTP endpoint for this test environment.
+
+  DownloadInstanceType:
+    Type: String
+    Default: m6i.2xlarge
+    Description: Instance type used for downloads and oc-mirror mirror-to-disk.
+    AllowedPattern: '^[a-z0-9.]+$'
+
+  WorkInstanceType:
+    Type: String
+    Default: m6i.2xlarge
+    Description: >
+      Instance type used for disk-to-mirror, the disconnected mirror registry,
+      DNS, NTP, configuration generation, and Agent ISO generation.
+    AllowedPattern: '^[a-z0-9.]+$'
+
+  SnoInstanceType:
+    Type: String
+    Default: t3.small
+    Description: >
+      Small instance used as the SNO fixed-IP and MAC-address dummy. The stack
+      always creates it, and the operator uses it to check the SNO input values
+      and connectivity. Size actual OpenShift nodes separately.
+    AllowedPattern: '^[a-z0-9.]+$'
+
+  DownloadRootVolumeSize:
+    Type: Number
+    Default: 500
+    MinValue: 500
+    Description: >
+      Download-host root volume in GiB. Increase it when the selected release
+      and Operator set requires more mirror-to-disk capacity.
+
+  WorkRootVolumeSize:
+    Type: Number
+    Default: 1000
+    MinValue: 500
+    Description: >
+      Work-host root volume in GiB. This single root volume simultaneously holds
+      the transferred mirror-to-disk data and the mirror-registry data, as well
+      as tools, configuration, and generated Agent ISOs. The 1000-GiB default
+      provides test headroom; increase it when mirroring more releases or
+      Operators. This template keeps all test data on the instance root volume.
+
+  SnoRootVolumeSize:
+    Type: Number
+    Default: 30
+    MinValue: 20
+    Description: >
+      SNO-dummy root volume in GiB. This capacity supports fixed-IP,
+      MAC-address, connectivity, and cloud-init checks. Size actual OpenShift
+      SNO storage from the on-premises design requirements.
+
+Metadata:
+  TemplateVersion: 0821v4
+  TemplateUpdated: '2026-08-21'
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Required SSH settings
+        Parameters:
+          - AdminCidr
+          - LabKeyName
+      - Label:
+          default: Network settings
+        Parameters:
+          - VpcCidr
+          - PublicSubnetCidr
+          - IsolatedSubnetCidr
+          - DownloadPrivateIp
+          - WorkPrivateIp
+          - SnoPrivateIp
+          - AmazonProvidedDnsIp
+          - AmazonTimeSyncIp
+      - Label:
+          default: EC2 instance types
+        Parameters:
+          - DownloadInstanceType
+          - WorkInstanceType
+          - SnoInstanceType
+      - Label:
+          default: Encrypted gp3 root volumes
+        Parameters:
+          - DownloadRootVolumeSize
+          - WorkRootVolumeSize
+          - SnoRootVolumeSize
+    ParameterLabels:
+      AdminCidr:
+        default: Administrator public IPv4 CIDR (/32 recommended)
+      LabKeyName:
+        default: Existing EC2 key pair name
+
+  DefaultTestTopology:
+    ClusterDnsZone: ocp.lab.example.com
+    PublicZone:
+      Subnet: 192.168.10.0/24
+      Download: 192.168.10.10
+      DownloadOsHostname: download.ocp.lab.example.com
+      InternetAccess: Elastic IP and Internet Gateway route
+    IsolatedZone:
+      Subnet: 192.168.100.0/24
+      WorkDnsNtpRegistry: 192.168.100.10
+      WorkOsHostname: work.ocp.lab.example.com
+      RegistryFqdn: registry.ocp.lab.example.com:8443
+      SNODummy: 192.168.100.20
+      SnoOsAndNodeHostname: sno-0.ocp.lab.example.com
+      InternetAccess: VPC-local route only
+
+Resources:
+  LookupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: ec2-lookup-and-logs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeImages
+                  - ec2:DescribeInstances
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+  LookupFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 60
+      Role: !GetAtt LookupRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import urllib.request
+
+          def send(event, context, status, data=None, reason=None, physical_id=None):
+              body = {
+                  "Status": status,
+                  "Reason": reason or ("See CloudWatch Logs: " + context.log_stream_name),
+                  "PhysicalResourceId": physical_id or context.log_stream_name,
+                  "StackId": event["StackId"],
+                  "RequestId": event["RequestId"],
+                  "LogicalResourceId": event["LogicalResourceId"],
+                  "NoEcho": False,
+                  "Data": data or {},
+              }
+              encoded = json.dumps(body).encode("utf-8")
+              request = urllib.request.Request(
+                  event["ResponseURL"],
+                  data=encoded,
+                  headers={"content-type": "", "content-length": str(len(encoded))},
+                  method="PUT",
+              )
+              urllib.request.urlopen(request, timeout=10)
+
+          def latest_rhel9_ami():
+              ec2 = boto3.client("ec2")
+              response = ec2.describe_images(
+                  Owners=["309956199498"],
+                  Filters=[
+                      {
+                          "Name": "name",
+                          "Values": [
+                              "RHEL-9*_HVM-*-x86_64-*",
+                              "RHEL-9*GA*x86_64*",
+                              "RHEL-9*Hourly*x86_64*",
+                          ],
+                      },
+                      {"Name": "architecture", "Values": ["x86_64"]},
+                      {"Name": "root-device-type", "Values": ["ebs"]},
+                      {"Name": "virtualization-type", "Values": ["hvm"]},
+                      {"Name": "state", "Values": ["available"]},
+                  ],
+              )
+              stable_images = [
+                  image for image in response.get("Images", [])
+                  if not any(
+                      marker in image.get("Name", "").lower()
+                      for marker in ("beta", "preview", "-rc", "_rc")
+                  )
+              ]
+              images = sorted(
+                  stable_images,
+                  key=lambda image: image.get("CreationDate", ""),
+                  reverse=True,
+              )
+              if not images:
+                  raise Exception(
+                      "No RHEL 9 x86_64 AMI was found in this Region "
+                      "for owner 309956199498."
+                  )
+              image = images[0]
+              return {
+                  "ImageId": image["ImageId"],
+                  "Name": image.get("Name", ""),
+                  "CreationDate": image.get("CreationDate", ""),
+                  "RootDeviceName": image.get("RootDeviceName", "/dev/sda1"),
+              }
+
+          def instance_mac(instance_id):
+              ec2 = boto3.client("ec2")
+              response = ec2.describe_instances(InstanceIds=[instance_id])
+              instance = response["Reservations"][0]["Instances"][0]
+              interface = instance["NetworkInterfaces"][0]
+              return {"MacAddress": interface["MacAddress"]}
+
+          def handler(event, context):
+              try:
+                  if event["RequestType"] == "Delete":
+                      send(
+                          event,
+                          context,
+                          "SUCCESS",
+                          {},
+                          physical_id=event.get("PhysicalResourceId"),
+                      )
+                      return
+
+                  properties = event.get("ResourceProperties", {})
+                  lookup_type = properties.get("LookupType")
+
+                  if lookup_type == "LatestRhel9Ami":
+                      data = latest_rhel9_ami()
+                      send(
+                          event,
+                          context,
+                          "SUCCESS",
+                          data,
+                          physical_id=data["ImageId"],
+                      )
+                  elif lookup_type == "InstanceMac":
+                      instance_id = properties["InstanceId"]
+                      data = instance_mac(instance_id)
+                      send(
+                          event,
+                          context,
+                          "SUCCESS",
+                          data,
+                          physical_id=instance_id + "-mac",
+                      )
+                  else:
+                      raise Exception("Unknown LookupType: " + str(lookup_type))
+              except Exception as error:
+                  send(event, context, "FAILED", {}, reason=str(error))
+
+  LatestRhel9Ami:
+    Type: Custom::Ec2Lookup
+    Properties:
+      ServiceToken: !GetAtt LookupFunction.Arn
+      LookupType: LatestRhel9Ami
+
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: ocp-airgap-test-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: ocp-airgap-test-igw
+
+  VpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PublicSubnetCidr
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: ocp-airgap-download-public-subnet
+        - Key: NetworkZone
+          Value: public-download
+
+  IsolatedSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref IsolatedSubnetCidr
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: ocp-airgap-isolated-subnet
+        - Key: NetworkZone
+          Value: isolated
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: ocp-airgap-public-route-table
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn:
+      - VpcGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  IsolatedRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: ocp-airgap-isolated-route-table
+        - Key: InternetDefaultRoute
+          Value: absent
+
+  IsolatedSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref IsolatedSubnet
+      RouteTableId: !Ref IsolatedRouteTable
+
+  DownloadSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SSH entry point and Internet egress for the Download host
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - Description: SSH from the administrator CIDR
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AdminCidr
+      SecurityGroupEgress:
+        - Description: Internet and VPC egress for downloads and package retrieval
+          IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: ocp-airgap-download-sg
+
+  WorkSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SSH and disconnected services for the Work host
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - Description: VPC-local traffic only
+          IpProtocol: '-1'
+          CidrIp: !Ref VpcCidr
+        - Description: AWS link-local NTP for the Work chrony upstream
+          IpProtocol: udp
+          FromPort: 123
+          ToPort: 123
+          CidrIp: !Sub '${AmazonTimeSyncIp}/32'
+      Tags:
+        - Key: Name
+          Value: ocp-airgap-work-sg
+
+  SnoSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Management and validation traffic for the SNO dummy
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - Description: VPC-local traffic only
+          IpProtocol: '-1'
+          CidrIp: !Ref VpcCidr
+      Tags:
+        - Key: Name
+          Value: ocp-airgap-sno-sg
+
+  WorkSshFromDownload:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: SSH and SCP from the Download bastion
+      GroupId: !Ref WorkSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      SourceSecurityGroupId: !Ref DownloadSecurityGroup
+
+  SnoSshFromDownload:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: SSH from the Download bastion
+      GroupId: !Ref SnoSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      SourceSecurityGroupId: !Ref DownloadSecurityGroup
+
+  WorkDnsTcpFromSno:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: DNS TCP from the isolated SNO test host
+      GroupId: !Ref WorkSecurityGroup
+      IpProtocol: tcp
+      FromPort: 53
+      ToPort: 53
+      SourceSecurityGroupId: !Ref SnoSecurityGroup
+
+  WorkDnsUdpFromSno:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: DNS UDP from the isolated SNO test host
+      GroupId: !Ref WorkSecurityGroup
+      IpProtocol: udp
+      FromPort: 53
+      ToPort: 53
+      SourceSecurityGroupId: !Ref SnoSecurityGroup
+
+  WorkNtpFromSno:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: NTP from the isolated SNO test host
+      GroupId: !Ref WorkSecurityGroup
+      IpProtocol: udp
+      FromPort: 123
+      ToPort: 123
+      SourceSecurityGroupId: !Ref SnoSecurityGroup
+
+  WorkRegistryFromSno:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Mirror registry HTTPS from the isolated SNO test host
+      GroupId: !Ref WorkSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      SourceSecurityGroupId: !Ref SnoSecurityGroup
+
+  DownloadInstance:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - PublicDefaultRoute
+    Properties:
+      ImageId: !GetAtt LatestRhel9Ami.ImageId
+      InstanceType: !Ref DownloadInstanceType
+      KeyName: !Ref LabKeyName
+      SourceDestCheck: true
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: false
+          DeleteOnTermination: true
+          DeviceIndex: '0'
+          GroupSet:
+            - !Ref DownloadSecurityGroup
+          PrivateIpAddress: !Ref DownloadPrivateIp
+          SubnetId: !Ref PublicSubnet
+      BlockDeviceMappings:
+        - DeviceName: !GetAtt LatestRhel9Ami.RootDeviceName
+          Ebs:
+            VolumeSize: !Ref DownloadRootVolumeSize
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -eux
+          hostnamectl set-hostname download.ocp.lab.example.com || true
+          mkdir -p \
+            /home/ec2-user/ocp-airgap/pkg \
+            /home/ec2-user/ocp-airgap/config \
+            /home/ec2-user/ocp-airgap/oc-mirror-work
+          chown -R ec2-user:ec2-user /home/ec2-user/ocp-airgap
+          install -d -m 0700 -o ec2-user -g ec2-user /home/ec2-user/.ssh
+          cat > /home/ec2-user/.ssh/config <<'EOF'
+          Host work
+              HostName ${WorkPrivateIp}
+              User ec2-user
+              IdentitiesOnly no
+              ServerAliveInterval 30
+              ServerAliveCountMax 6
+
+          Host sno
+              HostName ${SnoPrivateIp}
+              User ec2-user
+              IdentitiesOnly no
+              ServerAliveInterval 30
+              ServerAliveCountMax 6
+          EOF
+          chown ec2-user:ec2-user /home/ec2-user/.ssh/config
+          chmod 0600 /home/ec2-user/.ssh/config
+          install -d -m 0755 /etc/ssh/sshd_config.d
+          cat > /etc/ssh/sshd_config.d/60-ocp-airgap-bastion.conf <<'EOF'
+          AllowAgentForwarding no
+          AllowTcpForwarding no
+          Match User ec2-user
+              AllowAgentForwarding yes
+              # Cursor Remote-SSH uses a local/dynamic SSH tunnel to reach the
+              # Cursor Server listening on a random loopback port. Limit the
+              # built-in SSH forwarding destination to loopback, not Work/SNO.
+              AllowTcpForwarding local
+              PermitOpen 127.0.0.1:* localhost:* [::1]:*
+          Match all
+          EOF
+          /usr/sbin/sshd -t
+          systemctl reload sshd
+      Tags:
+        - Key: Name
+          Value: ocp-airgap-download
+        - Key: Role
+          Value: mirror-to-disk
+        - Key: NetworkZone
+          Value: public-download
+
+  DownloadElasticIp:
+    Type: AWS::EC2::EIP
+    DependsOn:
+      - VpcGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: ocp-airgap-download-eip
+
+  DownloadElasticIpAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt DownloadElasticIp.AllocationId
+      InstanceId: !Ref DownloadInstance
+
+  WorkInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !GetAtt LatestRhel9Ami.ImageId
+      InstanceType: !Ref WorkInstanceType
+      KeyName: !Ref LabKeyName
+      SourceDestCheck: true
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          AssociatePublicIpAddress: false
+          DeleteOnTermination: true
+          GroupSet:
+            - !Ref WorkSecurityGroup
+          PrivateIpAddress: !Ref WorkPrivateIp
+          SubnetId: !Ref IsolatedSubnet
+      BlockDeviceMappings:
+        - DeviceName: !GetAtt LatestRhel9Ami.RootDeviceName
+          Ebs:
+            VolumeSize: !Ref WorkRootVolumeSize
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          set -eux
+          hostnamectl set-hostname work.ocp.lab.example.com || true
+          mkdir -p \
+            /home/ec2-user/ocp-airgap/pkg \
+            /home/ec2-user/ocp-airgap/config \
+            /home/ec2-user/ocp-airgap/oc-mirror-work \
+            /home/ec2-user/ocp-airgap/mirror-registry
+          chown -R ec2-user:ec2-user /home/ec2-user/ocp-airgap
+      Tags:
+        - Key: Name
+          Value: ocp-airgap-work
+        - Key: Role
+          Value: dns-ntp-mirror-registry-disk-to-mirror-and-iso
+        - Key: NetworkZone
+          Value: isolated
+
+  SnoInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !GetAtt LatestRhel9Ami.ImageId
+      InstanceType: !Ref SnoInstanceType
+      KeyName: !Ref LabKeyName
+      SourceDestCheck: true
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: false
+          DeleteOnTermination: true
+          DeviceIndex: '0'
+          GroupSet:
+            - !Ref SnoSecurityGroup
+          PrivateIpAddress: !Ref SnoPrivateIp
+          SubnetId: !Ref IsolatedSubnet
+      BlockDeviceMappings:
+        - DeviceName: !GetAtt LatestRhel9Ami.RootDeviceName
+          Ebs:
+            VolumeSize: !Ref SnoRootVolumeSize
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          set -eux
+          hostnamectl set-hostname sno-0.ocp.lab.example.com || true
+      Tags:
+        - Key: Name
+          Value: ocp-airgap-sno-dummy
+        - Key: Role
+          Value: fixed-ip-and-mac-dummy
+        - Key: NetworkZone
+          Value: isolated
+
+  SnoMac:
+    Type: Custom::Ec2Lookup
+    Properties:
+      ServiceToken: !GetAtt LookupFunction.Arn
+      LookupType: InstanceMac
+      InstanceId: !Ref SnoInstance
+
+Outputs:
+  DownloadPublicIp:
+    Description: >
+      Stack-managed Elastic IP used by the administrator workstation to SSH to
+      the Download host.
+    Value: !Ref DownloadElasticIp
+
+  SnoMac:
+    Description: >
+      Primary-interface MAC address of the SNO dummy. Compare this value with
+      the address reported by the guest OS before using it as sample input.
+    Value: !GetAtt SnoMac.MacAddress
