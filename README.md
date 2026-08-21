@@ -2,12 +2,6 @@
 
 OpenShift Container Platform 4.21 を Agent-based Installer で閉域導入するための手順書と、検証用 AWS テンプレートをまとめたリポジトリーです。
 
-## 事前準備
-
-- `ocp-airgap-aws-test-cloudformation.yaml` は EC2 キーペアを自動作成しません。
-- スタック作成前に、デプロイ先リージョンで EC2 キーペアを事前に作成してください。
-- `LabKeyName` の既定値は `ocp-airgap-lab` です。パラメーターを変更しない場合は、この名前でキーペアを用意します。
-
 ## 収録ファイル
 
 ### `openshift_agentbasedinstall_airgap.md`
@@ -16,11 +10,11 @@ OpenShift Container Platform 4.21 を Agent-based Installer で閉域導入す�
 
 ### `openshift_agentbasedinstall_airgap_sample.md`
 
-サンプル値を多く含む検証向け手順書です。閉域内作業ホストへの DNS / NTP / ミラーレジストリー同居や、必要 RPM の持ち込みなど、PoC やラボで再現しやすい補足を含みます。
+サンプル値を多く含む検証向け手順書です。AWS CloudFormation で検証環境を作る流れを含み、PoC やラボで再現しやすい補足をまとめています。利用前に EC2 キーペアを用意します。
 
 ### `ocp-airgap-aws-test-cloudformation.yaml`
 
-Agent ISO 作成までの閉域ワークフローを AWS 上で検証するための CloudFormation テンプレートです。download host、work host、SNO dummy 用の EC2、VPC / サブネット、セキュリティグループ、RHEL 9 AMI と SNO MAC アドレスの自動解決用 Lambda-backed custom resource を定義します。テンプレートの対象は検証環境であり、OpenShift ノードへの ISO 接続や起動までは行いません。
+Agent ISO 作成までの閉域ワークフローを AWS 上で検証するための CloudFormation テンプレートです。download host、work host、SNO dummy 用の EC2、VPC / サブネット、セキュリティグループ、RHEL 9 AMI と SNO MAC アドレスの自動解決用 Lambda-backed custom resource を定義します。EC2 キーペアはテンプレート内では作成しないため、事前に用意して `LabKeyName` へ渡します。
 
 ## 想定用途
 
