@@ -10,7 +10,7 @@ OpenShift Container Platform 4.21 を Agent-based Installer で閉域導入す�
 
 ### `openshift_agentbasedinstall_airgap_sample.md`
 
-`openshift_agentbasedinstall_airgap.md` の手順をベースに、閉域内で利用する作業ホストには必要パッケージの搬入と導入のほか、DNS と NTP の設定も行います。CloudFormation テンプレート（`ocp-airgap-aws-test-cloudformation.yaml`）を使う場合は、利用前に EC2 キーペアを用意します。
+`openshift_agentbasedinstall_airgap.md` の手順に加え、閉域内で利用する作業ホストに必要パッケージの搬入と導入、DNS / NTP の設定を行います。CloudFormation テンプレート（`ocp-airgap-aws-test-cloudformation.yaml`）を使う場合は、利用前に EC2 キーペアを用意します。
 
 ### `ocp-airgap-aws-test-cloudformation.yaml`
 
