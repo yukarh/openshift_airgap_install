@@ -10,7 +10,7 @@ OpenShift Container Platform 4.21 を Agent-based Installer で閉域導入す�
 
 ### `openshift_agentbasedinstall_airgap_sample.md`
 
-サンプル値を多く含む検証向け手順書です。AWS CloudFormation で検証環境を作る流れを含み、PoC やラボで再現しやすい補足をまとめています。利用前に EC2 キーペアを用意します。
+サンプル値を多く含む検証向け手順書です。AWS CloudFormation で検証環境を作る流れや、閉域内作業ホストへの標準パッケージ導入など、PoC やラボで再現しやすい補足をまとめています。利用前に EC2 キーペアを用意します。
 
 ### `ocp-airgap-aws-test-cloudformation.yaml`
 
