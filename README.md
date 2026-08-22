@@ -10,11 +10,11 @@ Agent-based Installer を用いて閉域環境へ OpenShift を導入するた�
 
 ### `openshift_agentbasedinstall_airgap_sample.md`
 
-`openshift_agentbasedinstall_airgap.md` の手順に加え、閉域内で DNS / NTP を準備し、必要な汎用パッケージの搬入と導入を行います。CloudFormation テンプレート（`ocp-airgap-aws-test-cloudformation.yaml`）を使う場合は、利用前に EC2 キーペアを用意します。
+`openshift_agentbasedinstall_airgap.md` の手順に加え、閉域内で DNS / NTP を準備し、必要な汎用パッケージの搬入と導入を行います。作業用ホストへは SSH で接続して作業する想定です。CloudFormation テンプレート（`ocp-airgap-aws-test-cloudformation.yaml`）を使う場合は、利用前に EC2 キーペアを用意します。
 
 ### `ocp-airgap-aws-test-cloudformation.yaml`
 
-`openshift_agentbasedinstall_airgap_sample.md` の手順を AWS 上で検証するための CloudFormation テンプレートです。EC2 キーペアはテンプレート内では作成しないため、事前に用意します。
+`openshift_agentbasedinstall_airgap_sample.md` の手順を AWS 上で検証するための CloudFormation テンプレートです。作業用ホストへは SSH で接続して作業する想定で、EC2 キーペアはテンプレート内では作成しないため、事前に用意します。
 
 ## 想定用途
 
