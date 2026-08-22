@@ -23,13 +23,13 @@
 - [参考資料](#references)
 
 
-
+<a id="part-1"></a>
 # 第I部　OpenShiftのインストール方式、構成、要件
 
 第I部では、実際のインストール手順を紹介する前に、Agent-based Installerの動作、OpenShiftのクラスター構成、ネットワーク、DNS、NTP、通信、ミラーレジストリーなどの要件を整理する。
 
 
-
+<a id="section-1"></a>
 ## 1. Agent-based Installer方式と作業の流れ
 
 本章では、OpenShiftの主なインストール方式を比較し、Agent-based Installerで閉域クラスターを構築する際の手順の全体像を確認する。
@@ -143,7 +143,7 @@ flowchart LR
 
 
 
-
+<a id="section-2"></a>
 ## 2. クラスター構成と事前要件
 
 本章では、インストール前に確定するクラスター構成、OpenShiftノード、ネットワーク、通信、DNS、NTP、ミラーレジストリーの要件を示す。
@@ -359,7 +359,7 @@ OpenShiftへログ、バックアップ、仮想化、ストレージなどの�
 - [インストール設定：第2章「ファイアウォールの設定」（2.1「OpenShift Container Platform のファイアウォールの設定」）](https://docs.redhat.com/ja/documentation/openshift_container_platform/4.21/html/installation_configuration/configuring-firewall)
 
 
-
+<a id="part-2"></a>
 # 第II部　Agent-based Installerを使用したオフラインインストール手順
 
 第II部では、第I部で整理したサンプル値を用いて、OpenShiftのインストール作業を行う。
@@ -369,7 +369,7 @@ OpenShiftへログ、バックアップ、仮想化、ストレージなどの�
 作成したAgent ISOから各OpenShiftノードを起動し、最後にOpenShiftのインストール完了を確認する。
 
 
-
+<a id="section-3"></a>
 ## 3. 外部インターネット接続ホストでの資材準備
 
 本章では、閉域へ持ち込むプログラム、認証情報、OCPリリース、Operator、追加イメージを外部インターネット接続ホスト上で準備する。  
@@ -791,7 +791,7 @@ ls -lh "$MIRROR_WORK_DIR"/mirror_*.tar
 - [非接続環境：第1章「非接続環境について」（1.1「非接続環境に関する用語集」）](https://docs.redhat.com/ja/documentation/openshift_container_platform/4.21/html-single/disconnected_environments/index)
 
 
-
+<a id="section-4"></a>
 ## 4. 各資材の閉域への搬入
 
 本章では、外部インターネット接続ホストで準備した`$HOME/ocp-airgap`全体を、ディレクトリー構造を保ったまま閉域内作業ホストへ搬入する。
@@ -841,7 +841,7 @@ find "$PKG_DIR" -maxdepth 1 -type f -name 'mirror-registry*.tar.gz' -print
 - [非接続環境：第6章「oc-mirror プラグイン v2 を使用した非接続インストールのイメージのミラーリング」（6.5.5「完全な非接続環境でのイメージセットのミラーリング」）](https://docs.redhat.com/ja/documentation/openshift_container_platform/4.21/observability/disconnected_environments/about-installing-oc-mirror-v2)
 
 
-
+<a id="section-5"></a>
 ## 5. 閉域内作業ホストとミラーレジストリーの準備
 
 本章では、閉域内作業ホストへ搬入したプログラムを配置し、DNS、NTP、ミラーレジストリーへの接続を確認する。既存のミラーレジストリーを利用する場合は、CAと認証情報を準備してミラーレジストリーにイメージを登録する。
@@ -1151,7 +1151,7 @@ stat -c '%a %n' "$CLUSTER_PULL_SECRET"
 - [Agent-based Installer を使用したオンプレミスクラスターのインストール：第2章「非接続インストールのミラーリングについて」（2.1「Agent-based Installer による非接続インストールのイメージのミラーリング」）](https://docs.redhat.com/ja/documentation/openshift_container_platform/4.21/html/installing_an_on-premise_cluster_with_the_agent-based_installer/preparing-to-install-with-agent-based-installer)
 
 
-
+<a id="section-6"></a>
 ## 6. `install-config.yaml`の作成
 
 本章では、`openshift-install agent create image`がAgent ISOを作成するときに読み込む、クラスター全体の設定ファイル`install-config.yaml`を作成する。  
@@ -1406,7 +1406,7 @@ sshKey: |-
 - [非接続環境：第6章「oc-mirror プラグイン v2 を使用した非接続インストールのイメージのミラーリング」（6.6「oc-mirror プラグイン v2 によって生成されるカスタムリソースについて」）](https://docs.redhat.com/ja/documentation/openshift_container_platform/4.21/observability/disconnected_environments/about-installing-oc-mirror-v2)
 
 
-
+<a id="section-7"></a>
 ## 7. `agent-config.yaml`の作成
 
 本章では、Agent ISOから起動する各OpenShiftノードのFQDN、役割、NIC、MACアドレス、固定IP、DNS、NTP、デフォルトルート、RHCOSのインストール先ディスクを`agent-config.yaml`へ設定する。
@@ -1720,7 +1720,7 @@ hosts:
 - [Agent-based Installer を使用したオンプレミスクラスターのインストール：第9章「Agent-based Installer のインストール設定パラメーター」（9.2「使用可能なエージェント設定パラメーター」）](https://docs.redhat.com/ja/documentation/openshift_container_platform/4.21/html/installing_an_on-premise_cluster_with_the_agent-based_installer/installation-config-parameters-agent)
 
 
-
+<a id="section-8"></a>
 ## 8. Agent ISOの作成
 
 本章では、作成した`install-config.yaml`と`agent-config.yaml`をISO作成専用のディレクトリーへコピーし、`openshift-install`を使用してAgent ISOを作成する。
@@ -1809,7 +1809,7 @@ isohybrid --uefi "$ASSET_DIR/agent.x86_64.iso"
 - [Agent-based Installer を使用したオンプレミスクラスターのインストール：第3章「クラスターのインストール」（3.4「エージェントイメージの作成と起動」、3.5「現在のインストールホストがリリースイメージをプルできることを確認する」）](https://docs.redhat.com/ja/documentation/openshift_container_platform/4.21/html-single/installing_an_on-premise_cluster_with_the_agent-based_installer/index)
 
 
-
+<a id="section-9"></a>
 ## 9. ノードの起動とインストールの確認
 
 本章では、作成したAgent ISOで各OpenShiftノードを起動し、OpenShiftのインストール完了を確認する。最後に、各ノードの状態と管理画面への接続を確認する。
@@ -1972,7 +1972,7 @@ https://console-openshift-console.apps.ocp.lab.example.com
 - [Operator：第4章「管理者タスク」（4.9.5「クラスターへのカタログソースの追加」）](https://docs.redhat.com/ja/documentation/openshift_container_platform/4.21/html/operators/administrator-tasks)
 
 
-
+<a id="references"></a>
 ## 参考資料
 
 - [インストールの概要：第1章「OpenShift Container Platform インストールの概要」（1.1「OpenShift Container Platform のインストール」、1.1.4「インストールプロセス」）／第2章「クラスターインストール方法の選択およびそのユーザー向けの準備」（2.1）](https://docs.redhat.com/ja/documentation/openshift_container_platform/4.21/html-single/installation_overview/index)
