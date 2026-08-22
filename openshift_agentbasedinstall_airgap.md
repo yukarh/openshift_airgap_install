@@ -938,6 +938,8 @@ getent hosts "api.${CLUSTER_NAME}.${BASE_DOMAIN}"
 getent hosts "test.apps.${CLUSTER_NAME}.${BASE_DOMAIN}"
 chronyc tracking
 firewall-cmd --state
+firewall-cmd --list-services
+firewall-cmd --list-ports
 ```
 
 想定出力：
@@ -948,6 +950,8 @@ firewall-cmd --state
 <Ingress VIPまたはSNOの固定IP> test.apps.ocp.lab.example.com
 Leap status     : Normal
 running
+<servicesの一覧。閉域内作業ホストで提供する service を含む>
+<portsの一覧。少なくともミラーレジストリーの HTTPS ポートを含む>
 ```
 
 同じ名前解決と時刻同期を、Agent ISOから起動する全OpenShiftノードからも実施できる通信設計にする。
